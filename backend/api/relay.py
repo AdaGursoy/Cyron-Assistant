@@ -17,6 +17,7 @@ from backend.services.limit_service import (
 from backend.services.knowledge_service import search_knowledge
 from backend.services.message_service import add_message, get_last_messages
 from backend.services.prompt_builder import build_prompt_context
+from backend.services.usage_service import log_usage
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/relay", tags=["relay"])
@@ -36,14 +37,23 @@ async def relay_message(
     if not redis:
         raise HTTPException(status_code=500, detail="Redis not initialized")
 
-    guild_id = int(payload.guild_id)
-    channel_id = int(payload.channel_id)
+    try:
+        guild_id = int(payload.guild_id)
+        channel_id = int(payload.channel_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="guild_id and channel_id must be numeric strings") from exc
+
     try:
         # 1. Upsert guild
         guild = await upsert_guild(session, guild_id)
         await session.flush()
 
-        # 2. Get or create ticket (check daily limit first if new ticket)
+        # 2. Monthly token limit check (before processing)
+        ok, msg = await check_monthly_tokens(redis, guild_id, guild.plan)
+        if not ok:
+            return RelayResponse(status="limit_exceeded", reply=msg)
+
+        # 3. Get or create ticket (check daily limit first if new ticket)
         ticket = await get_ticket(session, guild_id, channel_id)
         if ticket is None:
             ok, msg = await check_daily_ticket_limit(redis, guild_id, guild.plan, True)
@@ -52,21 +62,17 @@ async def relay_message(
         ticket, _ = await get_or_create_ticket(session, guild_id, channel_id)
         await session.flush()
 
-        # 3. Remaining limit checks
-        ok, msg = await check_monthly_tokens(redis, guild_id, guild.plan)
-        if not ok:
-            return RelayResponse(status="limit_exceeded", reply=msg)
-
+        # 4. Concurrent limit check
         ok, msg = await check_and_incr_concurrent(redis, guild_id, guild.plan)
         if not ok:
             return RelayResponse(status="limit_exceeded", reply=msg)
 
         try:
-            # 4. Store user message
+            # 5. Store user message
             await add_message(session, ticket.id, "user", payload.content)
             await session.flush()
 
-            # 5. Build prompt context
+            # 6. Build prompt context
             knowledge_items = await search_knowledge(
                 session, guild_id, payload.content, top_k=3, plan=guild.plan
             )
@@ -83,10 +89,24 @@ async def relay_message(
                 message_history,
             )
 
-            # 6. Phase 2 placeholder reply (no AI yet)
+            # 7. Phase 2 placeholder reply (no AI yet)
             reply = "AI is thinking... (Phase 2 placeholder)"
             await add_message(session, ticket.id, "assistant", reply)
             await session.flush()
+            await log_usage(
+                session=session,
+                redis=redis,
+                guild_id=guild_id,
+                tokens_used=0,
+                request_type="relay",
+            )
+            logger.info(
+                "relay_processed",
+                guild_id=guild_id,
+                channel_id=channel_id,
+                plan=guild.plan,
+                knowledge_count=len(knowledge_items),
+            )
 
             return RelayResponse(
                 status="ok",

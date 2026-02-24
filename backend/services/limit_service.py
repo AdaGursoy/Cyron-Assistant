@@ -12,16 +12,16 @@ def _get_limits(plan: str) -> dict:
 
 
 def _redis_key_concurrent(guild_id: int) -> str:
-    return f"g:{guild_id}:concurrent"
+    return f"guild:{guild_id}:concurrent"
 
 
 def _redis_key_daily_tickets(guild_id: int) -> str:
     today = datetime.utcnow().strftime("%Y-%m-%d")
-    return f"g:{guild_id}:daily_tickets:{today}"
+    return f"guild:{guild_id}:daily_tickets:{today}"
 
 
 def _redis_key_monthly_tokens(guild_id: int) -> str:
-    return f"g:{guild_id}:monthly_tokens"
+    return f"guild:{guild_id}:monthly_tokens"
 
 
 async def check_and_incr_concurrent(redis: Redis, guild_id: int, plan: str) -> tuple[bool, str]:
@@ -41,6 +41,10 @@ async def check_and_incr_concurrent(redis: Redis, guild_id: int, plan: str) -> t
 async def decr_concurrent(redis: Redis, guild_id: int) -> None:
     """Decrement concurrent counter after request completes."""
     key = _redis_key_concurrent(guild_id)
+    current = int(await redis.get(key) or 0)
+    if current <= 0:
+        await redis.set(key, 0)
+        return
     await redis.decr(key)
 
 

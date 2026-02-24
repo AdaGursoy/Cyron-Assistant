@@ -1,7 +1,7 @@
 """Knowledge service - CRUD and similarity search."""
 
 import uuid
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.knowledge import Knowledge
@@ -12,9 +12,9 @@ from backend.utils.embeddings import embed_text, cosine_similarity
 async def get_knowledge_count(session: AsyncSession, guild_id: int) -> int:
     """Count knowledge entries for guild."""
     result = await session.execute(
-        select(Knowledge).where(Knowledge.guild_id == guild_id)
+        select(func.count(Knowledge.id)).where(Knowledge.guild_id == guild_id)
     )
-    return len(result.scalars().all())
+    return int(result.scalar_one())
 
 
 async def create_knowledge(
@@ -107,7 +107,6 @@ async def search_knowledge(
     plan: str = "free",
 ) -> list[Knowledge]:
     """Search knowledge by cosine similarity. Returns top_k entries."""
-    limit = PLAN_LIMITS.get(plan.lower(), PLAN_LIMITS["free"])["knowledge_entries"]
     result = await session.execute(
         select(Knowledge).where(Knowledge.guild_id == guild_id)
     )

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.session import get_session
 from backend.schemas.guild import GuildResponse, GuildUpdate
 from backend.schemas.plans import PLAN_LIMITS
-from backend.services.guild_service import upsert_guild, get_guild
+from backend.services.guild_service import get_guild, upsert_guild
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["guilds"])
@@ -31,7 +31,7 @@ async def get_or_create_guild(
 
     guild = await upsert_guild(session, gid)
     logger.info("guild_get_or_create", guild_id=gid, plan=guild.plan)
-    return GuildResponse.from_orm(guild)
+    return GuildResponse.model_validate(guild)
 
 
 @router.patch("/guilds/{guild_id}", response_model=GuildResponse)
@@ -67,5 +67,5 @@ async def update_guild(
         guild.system_prompt = body.system_prompt
 
     logger.info("guild_updated", guild_id=gid, plan=guild.plan)
-    return GuildResponse.from_orm(guild)
+    return GuildResponse.model_validate(guild)
 
