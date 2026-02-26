@@ -21,7 +21,7 @@ async def get_or_create_guild(
     """
     Get a guild by ID, creating a default one if it does not exist.
 
-    - Plan defaults to \"free\"
+    - Plan defaults to "free"
     - System prompt defaults to DEFAULT_SYSTEM_PROMPT
     """
     try:
@@ -88,4 +88,3 @@ async def update_guild(
         last_monthly_reset=guild.last_monthly_reset,
         system_prompt=guild.system_prompt,
     )
-
