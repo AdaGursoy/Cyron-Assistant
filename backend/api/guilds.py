@@ -88,6 +88,9 @@ async def update_guild(
         last_monthly_reset=guild.last_monthly_reset,
         system_prompt=guild.system_prompt,
     )
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> 88cafbeb77b284a7bef510f413ade36ccfba4424
 
