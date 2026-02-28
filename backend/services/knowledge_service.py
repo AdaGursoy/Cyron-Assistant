@@ -9,6 +9,7 @@ import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import MIN_SIMILARITY_THRESHOLD
 from backend.models.knowledge import Knowledge
 from backend.utils.embeddings import embed_text, cosine_similarity
 from backend.utils.text_splitter import chunk_knowledge
@@ -205,7 +206,7 @@ async def search_knowledge(
     guild_id: int,
     query: str,
     top_k: int = 4,
-    min_score: float = 0.65,
+    min_score: float = MIN_SIMILARITY_THRESHOLD,
 ) -> Tuple[list[Knowledge], float]:
     """
     Search knowledge by cosine similarity.
@@ -229,10 +230,18 @@ async def search_knowledge(
     if not scored:
         return [], 0.0
 
+    top_raw_similarity = float(scored[0][0])
+    logger.debug(
+        "search_knowledge_scores",
+        guild_id=guild_id,
+        top_raw_similarity=top_raw_similarity,
+        min_score=min_score,
+        candidates=len(scored),
+    )
+
     filtered = [(s, k) for s, k in scored if s >= min_score]
     if not filtered:
-        top_sim = scored[0][0]
-        return [], float(top_sim)
+        return [], top_raw_similarity
 
     top_items = filtered[:top_k]
     top_sim = top_items[0][0]

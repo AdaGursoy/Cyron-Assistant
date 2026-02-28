@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, TypedDict
 
+from backend.config import MIN_SIMILARITY_THRESHOLD
 from backend.schemas.relay import PromptContext
 
 
@@ -32,7 +33,7 @@ def build_prompt_context(
     knowledge_chunks: List[Dict[str, Any]],
     message_history: List[Dict[str, str]],
     top_similarity: float,
-    min_confidence: float = 0.65,
+    min_confidence: float = MIN_SIMILARITY_THRESHOLD,
     max_chars: int = 12_000,
 ) -> BuiltPromptContext:
     """

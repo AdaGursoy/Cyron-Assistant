@@ -5,6 +5,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Minimum cosine similarity for knowledge retrieval (low_confidence if below this).
+# Tune lower to capture short semantic matches (e.g. 0.57 for "support hours" style queries).
+MIN_SIMILARITY_THRESHOLD: float = 0.57
+
 
 class BackendConfig:
     """Backend configuration loaded from environment variables."""

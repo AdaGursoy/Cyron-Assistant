@@ -16,6 +16,7 @@ from backend.services.limit_service import (
     check_daily_ticket_limit,
     check_monthly_tokens,
 )
+from backend.config import MIN_SIMILARITY_THRESHOLD
 from backend.services.knowledge_service import search_knowledge
 from backend.services.message_service import add_message, get_last_messages
 from backend.services.prompt_builder import build_prompt_context
@@ -101,7 +102,7 @@ async def relay_message(
 
             # 6. Build prompt context (system prompt + knowledge + history)
             knowledge_items, top_similarity = await search_knowledge(
-                session, guild_id, payload.content, top_k=4, min_score=0.65
+                session, guild_id, payload.content, top_k=4, min_score=MIN_SIMILARITY_THRESHOLD
             )
             last_msgs = await get_last_messages(session, ticket.id, limit=8)
             knowledge_chunks = [
