@@ -16,6 +16,7 @@ from backend.config import config
 DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/api/oauth2/authorize"
 DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/oauth2/token"
 DISCORD_API_ME_URL = "https://discord.com/api/users/@me"
+DISCORD_API_USER_GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 
 def _require_oauth_config() -> tuple[str, str]:
@@ -125,6 +126,25 @@ async def fetch_discord_user(access_token: str) -> dict[str, Any]:
             detail="Invalid Discord user response.",
         )
     return data
+
+
+async def fetch_user_guilds(access_token: str) -> list[dict[str, Any]]:
+    """Fetch guilds for the OAuth user (used to seed dashboard guild list).
+
+    This uses the user access token, not the bot token. We keep it best-effort:
+    failures are logged but do not break login.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        resp = await client.get(DISCORD_API_USER_GUILDS_URL, headers=headers)
+
+    if resp.status_code != 200:
+        # Best-effort: just return empty; caller may log.
+        return []
+    data = resp.json()
+    if not isinstance(data, list):
+        return []
+    return [g for g in data if isinstance(g, dict)]
 
 
 def _avatar_url(discord_user: dict[str, Any]) -> str | None:

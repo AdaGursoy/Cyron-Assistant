@@ -5,8 +5,9 @@ from __future__ import annotations
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import structlog
-from fastapi import APIRouter, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import config
 from backend.services.auth_service import (
@@ -14,9 +15,12 @@ from backend.services.auth_service import (
     decode_app_token,
     exchange_code_for_access_token,
     fetch_discord_user,
+    fetch_user_guilds,
     issue_app_token,
     parse_state_token,
 )
+from backend.db.session import get_session
+from backend.services.guild_service import upsert_guild
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -58,6 +62,7 @@ async def start_discord_oauth(
 async def discord_oauth_callback(
     code: str = Query(...),
     state: str = Query(...),
+    session: AsyncSession = Depends(get_session),
 ):
     """Handle Discord callback, issue app token, and redirect to frontend callback."""
     redirect_uri = parse_state_token(state)
@@ -70,6 +75,25 @@ async def discord_oauth_callback(
     callback_url = f"{config.backend_public_url}/auth/callback"
     access_token = await exchange_code_for_access_token(code, callback_url)
     discord_user = await fetch_discord_user(access_token)
+
+    # Best-effort: sync user's guilds into DB so dashboard can list servers.
+    try:
+        user_guilds = await fetch_user_guilds(access_token)
+        for g in user_guilds:
+            gid = g.get("id")
+            name = g.get("name") or ""
+            if not gid:
+                continue
+            try:
+                gid_int = int(gid)
+            except (TypeError, ValueError):
+                continue
+            await upsert_guild(session, gid_int, name=name)
+        await session.commit()
+        logger.info("auth_discord_sync_guilds", guild_count=len(user_guilds))
+    except Exception as exc:  # pragma: no cover - non-critical
+        logger.warning("auth_discord_sync_guilds_failed", error=str(exc))
+
     app_token = issue_app_token(discord_user)
 
     final_url = _append_query_param(redirect_uri, "token", app_token)
