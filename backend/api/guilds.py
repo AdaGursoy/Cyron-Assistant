@@ -2,9 +2,11 @@
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_session
+from backend.dependencies import get_redis
 from backend.schemas.guild import GuildResponse, GuildUpdate
 from backend.schemas.plans import PLAN_LIMITS
 from backend.services.guild_service import get_guild, list_guilds, upsert_guild
@@ -13,37 +15,47 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["guilds"])
 
 
+def _icon_key(guild_id: int) -> str:
+    return f"guild:{guild_id}:icon_url"
+
+
 @router.get("/guilds", response_model=list[GuildResponse])
 async def get_all_guilds(
     session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
 ) -> list[GuildResponse]:
     """Return all guilds known to the backend.
 
-    For now this is not filtered by user; it simply returns every guild that
-    has been seen by the bot/backend. This is sufficient for the MVP dashboard.
+    For now this is filtered only by whether the guild has ever been synced
+    (typically when an admin/mod logs into the dashboard).
     """
     guilds = await list_guilds(session)
-    return [
-        GuildResponse(
-            id=g.id,
-            name=g.name,
-            plan=g.plan,
-            monthly_tokens_used=g.monthly_tokens_used,
-            daily_ticket_count=g.daily_ticket_count,
-            concurrent_ai_sessions=g.concurrent_ai_sessions,
-            last_daily_reset=g.last_daily_reset,
-            last_monthly_reset=g.last_monthly_reset,
-            system_prompt=g.system_prompt,
-            embed_color=g.embed_color or "#00b4ff",
+    responses: list[GuildResponse] = []
+    for g in guilds:
+        icon_url = await redis.get(_icon_key(g.id))
+        responses.append(
+            GuildResponse(
+                id=g.id,
+                name=g.name,
+                icon_url=icon_url,
+                plan=g.plan,
+                monthly_tokens_used=g.monthly_tokens_used,
+                daily_ticket_count=g.daily_ticket_count,
+                concurrent_ai_sessions=g.concurrent_ai_sessions,
+                last_daily_reset=g.last_daily_reset,
+                last_monthly_reset=g.last_monthly_reset,
+                system_prompt=g.system_prompt,
+                embed_color=g.embed_color or "#00b4ff",
+            )
         )
-        for g in guilds
-    ]
+    return responses
 
 
 @router.get("/guilds/{guild_id}", response_model=GuildResponse)
 async def get_or_create_guild(
     guild_id: str,
     session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
 ) -> GuildResponse:
     """
     Get a guild by ID, creating a default one if it does not exist.
@@ -58,9 +70,11 @@ async def get_or_create_guild(
 
     guild = await upsert_guild(session, gid)
     logger.info("guild_get_or_create", guild_id=gid, plan=guild.plan)
+    icon_url = await redis.get(_icon_key(guild.id))
     return GuildResponse(
         id=guild.id,
         name=guild.name,
+        icon_url=icon_url,
         plan=guild.plan,
         monthly_tokens_used=guild.monthly_tokens_used,
         daily_ticket_count=guild.daily_ticket_count,

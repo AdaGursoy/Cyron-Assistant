@@ -8,6 +8,7 @@ import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 
 from backend.config import config
 from backend.services.auth_service import (
@@ -20,6 +21,7 @@ from backend.services.auth_service import (
     parse_state_token,
 )
 from backend.db.session import get_session
+from backend.dependencies import get_redis
 from backend.services.guild_service import upsert_guild
 
 logger = structlog.get_logger(__name__)
@@ -63,6 +65,7 @@ async def discord_oauth_callback(
     code: str = Query(...),
     state: str = Query(...),
     session: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
 ):
     """Handle Discord callback, issue app token, and redirect to frontend callback."""
     redirect_uri = parse_state_token(state)
@@ -76,10 +79,27 @@ async def discord_oauth_callback(
     access_token = await exchange_code_for_access_token(code, callback_url)
     discord_user = await fetch_discord_user(access_token)
 
-    # Best-effort: sync user's guilds into DB so dashboard can list servers.
+    # Best-effort: sync user's admin/mod guilds into DB so dashboard can list servers.
     try:
         user_guilds = await fetch_user_guilds(access_token)
-        for g in user_guilds:
+
+        def _has_admin_or_manage(perms: object, owner: object) -> bool:
+            if owner:
+                return True
+            try:
+                value = int(perms) if perms is not None else 0
+            except (TypeError, ValueError):
+                value = 0
+            # ADMINISTRATOR (0x8) or MANAGE_GUILD (0x20)
+            return bool(value & (0x8 | 0x20))
+
+        admin_guilds = [
+            g
+            for g in user_guilds
+            if _has_admin_or_manage(g.get("permissions"), g.get("owner"))
+        ]
+
+        for g in admin_guilds:
             gid = g.get("id")
             name = g.get("name") or ""
             if not gid:
@@ -88,9 +108,18 @@ async def discord_oauth_callback(
                 gid_int = int(gid)
             except (TypeError, ValueError):
                 continue
+
             await upsert_guild(session, gid_int, name=name)
+
+            icon_hash = g.get("icon")
+            if icon_hash:
+                icon_url = (
+                    f"https://cdn.discordapp.com/icons/{gid_int}/{icon_hash}.png"
+                )
+                await redis.set(f"guild:{gid_int}:icon_url", icon_url)
+
         await session.commit()
-        logger.info("auth_discord_sync_guilds", guild_count=len(user_guilds))
+        logger.info("auth_discord_sync_guilds", guild_count=len(admin_guilds))
     except Exception as exc:  # pragma: no cover - non-critical
         logger.warning("auth_discord_sync_guilds_failed", error=str(exc))
 

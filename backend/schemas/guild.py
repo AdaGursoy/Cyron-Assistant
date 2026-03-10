@@ -14,6 +14,9 @@ class GuildResponse(BaseModel):
 
     id: int = Field(..., description="Discord guild ID")
     name: str
+    icon_url: str | None = Field(
+        default=None, description="Discord guild icon URL (if available)"
+    )
     plan: str
     monthly_tokens_used: int
     daily_ticket_count: int
