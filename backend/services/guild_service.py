@@ -26,6 +26,13 @@ async def upsert_guild(
         )
         session.add(guild)
         await session.flush()
+    else:
+        # If we receive a non-empty name and the stored name is blank/placeholder,
+        # update it so the dashboard can display this guild correctly.
+        cleaned = (name or "").strip()
+        if cleaned and not (guild.name or "").strip():
+            guild.name = cleaned
+            await session.flush()
     return guild
 
 

@@ -6,6 +6,7 @@ currently have the bot installed, so the dashboard can show accurate status.
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,9 +22,16 @@ def _bot_guild_key(guild_id: int) -> str:
     return f"bot:guild:{guild_id}:installed"
 
 
+class BotGuildPayload(BaseModel):
+    """Payload sent from the bot when marking a guild."""
+
+    name: str | None = None
+
+
 @router.post("/guilds/{guild_id}/installed")
 async def mark_guild_has_bot(
     guild_id: str,
+    body: BotGuildPayload | None = None,
     session: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis),
 ) -> dict:
@@ -36,7 +44,8 @@ async def mark_guild_has_bot(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid guild_id format")
 
-    guild = await upsert_guild(session, gid)
+    name = (body.name or "").strip() if body else ""
+    guild = await upsert_guild(session, gid, name=name)
     await redis.set(_bot_guild_key(gid), "1")
     logger.info("bot_mark_installed", guild_id=gid, name=guild.name)
     return {"status": "ok"}

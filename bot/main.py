@@ -77,7 +77,7 @@ class AITicketBot(commands.Bot):
         try:
             client = get_client()
             for g in self.guilds:
-                await client.mark_guild_has_bot(str(g.id))
+                await client.mark_guild_has_bot(str(g.id), name=g.name)
         except Exception as e:
             logger.warning(f"Failed to sync bot-installed guilds to backend: {e}")
 
@@ -88,7 +88,7 @@ class AITicketBot(commands.Bot):
             # Mark in backend that this guild has the bot installed
             try:
                 client = get_client()
-                await client.mark_guild_has_bot(str(guild.id))
+                await client.mark_guild_has_bot(str(guild.id), name=guild.name)
             except Exception as e:
                 logger.warning("Failed to notify backend of new guild %s: %s", guild.id, e)
 

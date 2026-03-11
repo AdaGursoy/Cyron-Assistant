@@ -36,16 +36,20 @@ async def get_all_guilds(
     guilds = await list_guilds(session)
     responses: list[GuildResponse] = []
     for g in guilds:
-        # Skip placeholder/internal guilds that don't have a human-readable name
-        if not (g.name or "").strip():
-            continue
+        # Skip placeholder/internal guilds that don't have a human-readable name.
+        # However, if the bot has reported that it is installed, we still include
+        # the guild and rely on the dashboard to show a generic label.
+        name_clean = (g.name or "").strip()
         icon_url = await redis.get(_icon_key(g.id))
         has_bot_raw = await redis.get(_bot_guild_key(g.id))
         has_bot = bool(has_bot_raw == "1")
+        if not name_clean and not has_bot:
+            # Pure placeholder guild with no name and no bot installed: hide it.
+            continue
         responses.append(
             GuildResponse(
                 id=g.id,
-                name=g.name,
+                name=name_clean or f"Server {g.id}",
                 icon_url=icon_url,
                 plan=g.plan,
                 monthly_tokens_used=g.monthly_tokens_used,

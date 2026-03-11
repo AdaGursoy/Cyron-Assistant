@@ -53,12 +53,15 @@ class BackendClient:
             logger.warning(f"Failed to fetch guild {guild_id}: {e}")
             return None
 
-    async def mark_guild_has_bot(self, guild_id: str) -> None:
+    async def mark_guild_has_bot(self, guild_id: str, name: str | None = None) -> None:
         """Notify backend that the bot is installed in this guild."""
         url = f"{self.base_url}/internal/bot/guilds/{guild_id}/installed"
         session = await self._get_session()
         try:
-            async with session.post(url) as response:
+            payload: dict[str, Any] = {}
+            if name:
+                payload["name"] = name
+            async with session.post(url, json=payload or None) as response:
                 if response.status != 200:
                     text = await response.text()
                     logger.warning(
