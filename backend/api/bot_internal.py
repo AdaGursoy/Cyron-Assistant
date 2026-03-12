@@ -47,9 +47,11 @@ async def mark_guild_has_bot(
     name = (body.name or "").strip() if body else ""
     guild = await upsert_guild(session, gid, name=name)
     # Mark in Redis that this guild currently has the bot installed.
-    # Use a short TTL so the flag self-heals quickly if the bot is removed
-    # while offline and the \"removed\" event never arrives.
-    await redis.set(_bot_guild_key(gid), "1", ex=10 * 60)
+    # We keep a generous TTL; the bot periodically refreshes this flag while
+    # it is present in the guild, and on_guild_remove clears it explicitly.
+    # If the bot is removed while offline and never sends a "removed" event,
+    # the flag will eventually expire.
+    await redis.set(_bot_guild_key(gid), "1", ex=24 * 60 * 60)
     logger.info("bot_mark_installed", guild_id=gid, name=guild.name)
     return {"status": "ok"}
 

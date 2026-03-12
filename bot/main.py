@@ -81,6 +81,22 @@ class AITicketBot(commands.Bot):
         except Exception as e:
             logger.warning(f"Failed to sync bot-installed guilds to backend: {e}")
 
+        # Periodically refresh installed flags so the dashboard stays accurate
+        # even after long uptimes.
+        async def _refresh_installed_flags() -> None:
+            while not self.is_closed():
+                try:
+                    client_inner = get_client()
+                    for g in self.guilds:
+                        await client_inner.mark_guild_has_bot(str(g.id), name=g.name)
+                except Exception as exc:  # pragma: no cover - best-effort
+                    logger.warning("refresh_installed_flags_failed: %s", exc)
+                await asyncio.sleep(5 * 60)
+
+        # Start background task once
+        if not hasattr(self, "_refresh_task"):
+            self._refresh_task = asyncio.create_task(_refresh_installed_flags())
+
     async def on_guild_join(self, guild: discord.Guild) -> None:
         """Called when the bot joins a new guild. Send welcome embed."""
         logger.info(f"Joined new guild: {guild.name} (ID: {guild.id})")
