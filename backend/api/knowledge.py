@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_session
@@ -48,7 +48,7 @@ async def list_guild_knowledge(
 @router.post("", response_model=KnowledgeResponse)
 async def create_guild_knowledge(
     guild_id: int = Depends(require_guild_admin),
-    body: KnowledgeCreate,
+    body: KnowledgeCreate = Body(...),
     session: AsyncSession = Depends(get_session),
 ):
     """Create knowledge entry with validation and chunking."""
@@ -78,8 +78,8 @@ async def create_guild_knowledge(
 
 @router.get("/{knowledge_id}", response_model=KnowledgeResponse)
 async def get_guild_knowledge(
-    guild_id: int = Depends(require_guild_admin),
     knowledge_id: UUID,
+    guild_id: int = Depends(require_guild_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Get knowledge entry by ID."""
@@ -101,9 +101,9 @@ async def get_guild_knowledge(
 
 @router.put("/{knowledge_id}", response_model=KnowledgeResponse)
 async def update_guild_knowledge(
-    guild_id: int = Depends(require_guild_admin),
     knowledge_id: UUID,
-    body: KnowledgeUpdate,
+    body: KnowledgeUpdate = Body(...),
+    guild_id: int = Depends(require_guild_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Update knowledge entry with validation."""
@@ -133,8 +133,8 @@ async def update_guild_knowledge(
 
 @router.delete("/{knowledge_id}", status_code=204)
 async def delete_guild_knowledge(
-    guild_id: int = Depends(require_guild_admin),
     knowledge_id: UUID,
+    guild_id: int = Depends(require_guild_admin),
     session: AsyncSession = Depends(get_session),
 ):
     """Delete knowledge entry."""
