@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_session
 from backend.dependencies import get_redis, get_current_user_id
+from backend.services.user_guild_service import list_user_guild_ids
 from backend.schemas.guild import GuildResponse, GuildUpdate
 from backend.schemas.plans import PLAN_LIMITS
 from backend.services.guild_service import get_guild, list_guilds, upsert_guild
@@ -35,9 +36,15 @@ async def get_all_guilds(
     (typically when an admin/mod logs into the dashboard).
     """
     # Only return guilds the current user is authorized to manage.
+    user_guild_ids = set(await list_user_guild_ids(session, user_id))
+    if not user_guild_ids:
+        return []
+
     guilds = await list_guilds(session)
     responses: list[GuildResponse] = []
     for g in guilds:
+        if g.id not in user_guild_ids:
+            continue
         # Skip placeholder/internal guilds that don't have a human-readable name.
         # However, if the bot has reported that it is installed, we still include
         # the guild and rely on the dashboard to show a generic label.
